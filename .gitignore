@@ -1,0 +1,17 @@
+# data archives and local-only files (not part of the public release)
+*.zip
+*.7z
+README_SETUP.md
+old_requirements.txt
+main_NPC.py
+train_f30k.sh
+# machine-specific experiment queues used during the 2026-11 revision
+revision/queue_*.sh
+# outputs and caches
+__pycache__/
+*.pyc
+*.pt
+*.pth
+runs/
+logs/
+.agent-tmp/
