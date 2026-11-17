@@ -183,8 +183,9 @@ def train(args, model, universal_pseudo_text, clip_sim_threshold, train_dataload
     
     noisy_count = 0
     replaced_count = 0
-    clip_sim_threshold = 0.2
+    clip_sim_threshold = float(os.environ.get("UFGF_SIGMA", 0.2))  # revision: sigma override for the gated rule (default 0.2)
     replaced = 0
+    route_hist = torch.zeros(universal_pseudo_text.size(0), dtype=torch.long)  # revision: anchor usage (multi-anchor only)
     logit_scale = torch.tensor(100.0, device='cuda')
     fea_dim = 512
 
@@ -222,11 +223,19 @@ def train(args, model, universal_pseudo_text, clip_sim_threshold, train_dataload
             ori_sim = F.cosine_similarity(ImgFea_b_grad, TxtFea_b_grad) 
             ori_mat = ImgFea_b_grad @ TxtFea_b_grad.T # 在这里搞一下双向
             clean_mask = torch.arange(ImgFea_b_grad.size(0)).cuda() == torch.max(ori_mat, dim=-1)[1] # 匹配的话便是clean
+            if os.environ.get("UFGF_ORACLE") == "1":  # revision: ground-truth clean mask (upper bound for detection)
+                clean_mask = torch.from_numpy(~diag.gt_noisy[cap_idx.cpu().numpy()]).to(clean_mask.device)
             noisy_count = noisy_count + torch.sum(~clean_mask).item() 
 
         ## 全部替换不太好，还得检验一下
         with torch.no_grad(): ### 计算置信度的本质是"评估"而非"学习",梯度不从这里流向attnT生成模块
-            clip_sim = F.cosine_similarity(ImgFea_b_grad, universal_pseudo_text)
+            anchor_b = universal_pseudo_text  # [1, d]: one shared anchor (default, unchanged behaviour)
+            if universal_pseudo_text.size(0) > 1:  # revision: K fixed anchors, each image routed to its most similar anchor
+                route = (F.normalize(ImgFea_b_grad.float(), dim=-1)
+                         @ F.normalize(universal_pseudo_text.float(), dim=-1).T).argmax(dim=1)
+                anchor_b = universal_pseudo_text[route]  # [B, d]
+                route_hist += torch.bincount(route[~clean_mask], minlength=universal_pseudo_text.size(0)).cpu()
+            clip_sim = F.cosine_similarity(ImgFea_b_grad, anchor_b)
         #### 量化生成样本的品质 # 更新滑动窗口
         sample_score_max_window.add(torch.max(clip_sim).item())
         sample_score_mean_window.add(torch.mean(clip_sim).item())
@@ -238,7 +247,7 @@ def train(args, model, universal_pseudo_text, clip_sim_threshold, train_dataload
         if os.environ.get("UFGF_UFF_RULE") == "three":  # revision ablation: UFG-style rule (non-clean, > sigma, better than own text)
             replace_mask = (clip_sim > ori_sim) & (clip_sim > clip_sim_threshold) & (~clean_mask)
         # replace_mask = ((clip_sim > ori_sim)) & (~clean_mask)
-        texts_new_fea = torch.where(replace_mask.unsqueeze(1), universal_pseudo_text.clone(), TxtFea_b_grad) # 如果~clean_mask(是噪声)，但没找到合适的伪样本(clip_sim > ori_sim)，那还是不替换
+        texts_new_fea = torch.where(replace_mask.unsqueeze(1), anchor_b.clone(), TxtFea_b_grad) # 如果~clean_mask(是噪声)，但没找到合适的伪样本(clip_sim > ori_sim)，那还是不替换
         vanilla = os.environ.get("UFGF_MODE") == "vanilla"  # revision: plain CLIP fine-tuning baseline
         if vanilla:  # no replacement; every pair keeps its observed (possibly noisy) caption
             replace_mask = torch.zeros_like(clean_mask)
@@ -309,7 +318,13 @@ def train(args, model, universal_pseudo_text, clip_sim_threshold, train_dataload
             
             noisy_count = 0
             replaced_count = 0
-            
+
+    if universal_pseudo_text.size(0) > 1:  # revision: how the flagged pairs were spread over the anchors
+        h = route_hist.float()
+        p_ = h / h.sum().clamp(min=1)
+        logger.info("[anchors] epoch %d: K=%d, used=%d, largest share=%.3f, effective number=%.1f",
+                    epoch + 1, h.numel(), int((h > 0).sum()), p_.max().item(),
+                    torch.exp(-(p_[p_ > 0] * p_[p_ > 0].log()).sum()).item())
     return
 
 if __name__ == '__main__':
