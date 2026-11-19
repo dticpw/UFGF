@@ -134,9 +134,10 @@ def main():
 
     # optimizer = optim.AdamW(model.parameters(), lr=args.lr, betas=(args.beta1, args.beta2), eps=args.eps, weight_decay=args.weight_decay) 
     # scheduler = cosine_lr(optimizer, args.lr, args.warmup, total_steps)
+    proj_lr = float(os.environ.get("UFGF_PROJ_LR", 1e-5))  # lr of the UFR projection (paper: 1e-5)
     optimizer = optim.AdamW(
         [
-            {"params": high_lr_params, "lr": 1e-5, "initial_lr": 1e-5},  #
+            {"params": high_lr_params, "lr": proj_lr, "initial_lr": proj_lr},  #
             # {"params": high_lr_params, "lr": 5e-6, "initial_lr": 5e-6},  #
             {"params": base_params, "lr": args.lr, "initial_lr": args.lr}      # 基础学习率
         ],

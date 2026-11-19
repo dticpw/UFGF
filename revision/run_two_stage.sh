@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Two-stage UFGF run used for the 2026-11 revision (UFG -> fixed UFR -> UFF -> test).
+# Two-stage UFGF run (UFG -> fixed UFR -> UFF -> test) with the settings of the paper.
 # Usage: bash revision/run_two_stage.sh <dataset f30k|coco> <dataset_root> <noise_ratio> <seed> <run_name>
 # Optional env: UFGF_BS (batch size, default 256), UFGF_SIGMA (UFG replacement threshold, default 0.2),
-#   UFGF_NANNS (captions per image: 5 for f30k/coco, 1 for cc; default 5), UFGF_LAMBDA1 (default 4; 0 removes L_I/L_T),
+#   UFGF_NANNS (captions per image: 5 for f30k/coco, 1 for cc; default 5), UFGF_LAMBDA1 (default 2; 0 removes L_I/L_T), UFGF_LAMBDA2 (default 0.8),
+#   UFGF_PROJ_LR (lr of the UFR projection, default 1e-5),
 #   UFGF_UFF_RULE=three (UFF uses the UFG three-condition replacement rule instead of all non-clean).
-# Run from the code directory (the one containing main_NPC.py and revision/).
+# Run from the repository root (the directory containing revision/).
 set -euo pipefail
 DATASET=$1; ROOT=$2; NOISE=$3; SEED=$4; NAME=$5
 PY=${UFGF_PY:-/root/miniconda3/envs/t200/bin/python}
@@ -15,7 +16,7 @@ COMMON="--dataset $DATASET --dataset_root $ROOT --vision_model ViT-B/32 --num_an
 export PYTHONPATH="$PWD/revision:$PWD"
 
 echo "[$(date)] UFG start" | tee -a "$RUN/run.log"
-UFGF_RUN_DIR=$RUN/ufg "$PY" -u revision/main_ufg.py $COMMON --lambda1 ${UFGF_LAMBDA1:-4} --lambda2 0.9 >> "$RUN/ufg/stdout.log" 2>&1
+UFGF_RUN_DIR=$RUN/ufg "$PY" -u revision/main_ufg.py $COMMON --lambda1 ${UFGF_LAMBDA1:-2} --lambda2 ${UFGF_LAMBDA2:-0.8} >> "$RUN/ufg/stdout.log" 2>&1
 
 UFR=$RUN/ufg/ufr/universal_pseudo_text3.pt   # same extraction point as the archived pipeline (epoch 4, first batch)
 test -f "$UFR"

@@ -39,8 +39,8 @@ def parse_args():
     parser.add_argument("--noise_ratio", type=float, default=0,
                         help="Set the ratio of noise in training.")
     
-    parser.add_argument("--epochs", type=int, default=10, 
-                        help="Number of full epochs to train for (only works if --max_steps is None).")
+    parser.add_argument("--epochs", type=int, default=5,
+                        help="Number of epochs per training phase (paper: 5).")
     
     parser.add_argument("--eval", action="store_true", default=False,
                         help="train or eval",)
@@ -63,7 +63,7 @@ def parse_args():
     parser.add_argument("--context_length", type=int, default=64, 
                         help="The maximum length of input text (include [CLS] & [SEP] tokens).")
     
-    parser.add_argument("--lr", type=float, default=1e-6, help="Learning rate.")
+    parser.add_argument("--lr", type=float, default=1e-7, help="Learning rate of the CLIP encoders (paper: 1e-7; the UFR projection uses 1e-5).")
     parser.add_argument("--beta1", type=float, default=0.9, help="Adam beta 1.")
     parser.add_argument("--beta2", type=float, default=0.98, help="Adam beta 2.")
     parser.add_argument("--eps", type=float, default=1e-6, help="Adam epsilon.")
@@ -90,11 +90,11 @@ def parse_args():
         help="Random seed."
     )
 
-    # 因果学习相关
-    parser.add_argument('--lambda1', type=float, default=3.0,
-                    help='para_lambda1')
-    parser.add_argument('--lambda2', type=float, default=0.85,
-                    help='para_lambda1')
+    # UFG regularizer weights: L = L_B + lambda1 * (lambda2 * L_I + (1 - lambda2) * L_T)  (paper: lambda1=2, lambda2=0.8)
+    parser.add_argument('--lambda1', type=float, default=2.0,
+                    help='Weight of the UFR regularizers L_I and L_T (paper: 2).')
+    parser.add_argument('--lambda2', type=float, default=0.8,
+                    help='Share of L_I within the regularizers; L_T gets 1 - lambda2 (paper: 0.8).')
 
 
 

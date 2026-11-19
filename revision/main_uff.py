@@ -252,6 +252,10 @@ def train(args, model, universal_pseudo_text, clip_sim_threshold, train_dataload
         if vanilla:  # no replacement; every pair keeps its observed (possibly noisy) caption
             replace_mask = torch.zeros_like(clean_mask)
             texts_new_fea = TxtFea_b_grad
+        drop = os.environ.get("UFGF_MODE") == "drop"  # revision baseline: discard flagged pairs instead of filling them
+        if drop:  # same clean mask; non-clean pairs are removed from the batch (neither positives nor negatives)
+            replace_mask = torch.zeros_like(clean_mask)
+            texts_new_fea = TxtFea_b_grad
         # 对替换的样本计数
         replaced = replaced + torch.sum(replace_mask).item() ## 能给出来的 55
         replaced_count = replaced_count + torch.sum(replace_mask).item()
@@ -261,7 +265,14 @@ def train(args, model, universal_pseudo_text, clip_sim_threshold, train_dataload
         batch_i2t_sim_new, batch_t2i_sim_new, _, _ = model(ImgFea_b_grad, texts_new_fea) # (bs,bs) # 确实啊，前面的用不到
         batch_i2t_ori_loss, batch_t2i_ori_loss = loss(batch_i2t_sim_new, batch_t2i_sim_new, 'batch')
         loss_mask = torch.ones_like(clean_mask) if vanilla else (replace_mask | clean_mask)
-        batch_loss = torch.mean(loss_mask * (batch_i2t_ori_loss + batch_t2i_ori_loss)/2)            
+        batch_loss = torch.mean(loss_mask * (batch_i2t_ori_loss + batch_t2i_ori_loss)/2)
+        if drop:
+            if int(clean_mask.sum()) >= 2:
+                i2t_keep, t2i_keep, _, _ = model(ImgFea_b_grad[clean_mask], TxtFea_b_grad[clean_mask])
+                batch_i2t_ori_loss, batch_t2i_ori_loss = loss(i2t_keep, t2i_keep, 'batch')
+                batch_loss = torch.mean((batch_i2t_ori_loss + batch_t2i_ori_loss) / 2)
+            else:  # degenerate batch: nothing to learn from
+                batch_loss = 0.0 * ImgFea_b_grad.sum()
         
         # batch_loss = torch.mean((batch_i2t_ori_loss + batch_t2i_ori_loss)/2)
         final_loss = batch_loss #+ loss_I + loss_T# + feaMatchingLoss
